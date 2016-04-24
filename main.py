@@ -1,7 +1,9 @@
 import csv as csv
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import GradientBoostingClassifier
 from sklearn import svm
+from feature_similarity import feature_correlation
+import re
 
 def check(string):
     sum = 0
@@ -11,12 +13,17 @@ def check(string):
             continue
         if string[i] == '.':
             continue
-        return True
-    if sum != 0:
         return False
-    return True
+    if sum != 0:
+        return True
+    return False
 
+def extract_name_feature(name):
+    m = re.search(r"([a-zA-z( )]+), ([a-zA-z]+). ([a-zA-z(.)]+)", name)
+    result = list(m.groups())
+    return result[0], result[1]
 
+# Normalization features
 def normalize_features(feature):
     columns = len(feature[0])
     min_value = [10000.0]*columns
@@ -33,124 +40,127 @@ def normalize_features(feature):
 
     return feature
 
-def prepare_data(data):
+def prepare_data(input):
+    del input[0]
     feature = []
-    label = []
+    for i in range(0, len(input)):
+        feature_example = [1]*7
+        feature.append(feature_example)
+
+    # Default value to be calculated for null values
+    default_value = [0]*9
+    default_count = [0]*9
+
+    abbrev_map = {}
+    abbrev_count = 0.0
+
+    surname_map = {}
+    surname_count = 0.0
+
+    for i in range(0, len(input)):
+        # Default value for age parameter
+        if check(input[i][4]):
+            default_count[4] += 1
+            default_value[4] += float(input[i][4])
+        # Default value for siblings travelling
+        if check(input[i][5]):
+            default_count[5] += 1
+            default_value[5] += float(input[i][5])
+        # Default value for parents/ children travelling
+        if check(input[i][6]):
+            default_count[6] += 1
+            default_value[6] += float(input[i][6])
+        # Default value for fare
+        if check(input[i][8]):
+            default_count[8] += 1
+            default_value[8] += float(input[i][8])
 
 
-    default_value = [0]*20
-    count_value = [0]*20
-    for row in data:
-        for i in range(0, len(row)):
-            if i == 2 or i == 5 or i == 6 or i == 9:
-                if check(row[i]):
-                    continue
-                default_value[i] += float(row[i])
-                count_value[i] += 1
-
-    for i in range(0, 20):
-        if count_value[i] == 0:
-            continue
-        default_value[i] /= count_value[i]
-
-
-    for row in data:
-        now = []
-        for i in range(0, len(row)):
-            if i == 1:
-                label.append(int(row[1]))
-                continue
-
-            if i == 2 or i == 5 or i == 6 or i == 9:
-                if check(row[i]):
-                    now.append(default_value[i])
-                else:
-                    now.append(float(row[i]))
-                continue
-
-            if i == 4:
-                if row[4] == 'male':
-                    now.append(1.0)
-                else:
-                    now.append(0.0)
-                continue
-
-        feature.append(now)
-
-    feature = normalize_features(feature)
-    return feature, label
-
-def get_features_vectors(csv_file):
-    csv_file_object = csv.reader(open(csv_file, 'rb'))
-    header = csv_file_object.next()
-    data=[]
-
-    for row in csv_file_object:
-        data.append(row)
-
-    feature, label = prepare_data(data)
-    return feature, label
-
-
-def prepare_test_data(data):
-    feature = []
-    label = []
-
-
-    default_value = [0]*20
-    count_value = [0]*20
-    for row in data:
-        for i in range(0, len(row)):
-            if i == 1 or i == 4 or i == 5 or i == 8:
-                if check(row[i]):
-                    continue
-                default_value[i] += float(row[i])
-                count_value[i] += 1
-
-    for i in range(0, 20):
-        if count_value[i] == 0:
-            continue
-        default_value[i] /= count_value[i]
-
-
-    for row in data:
-        now = []
-        for i in range(0, len(row)):
-            if i == 1 or i == 4 or i == 5 or i == 8:
-                if check(row[i]):
-                    now.append(default_value[i])
-                else:
-                    now.append(float(row[i]))
-                continue
-            if i == 3:
-                if row[3] == 'male':
-                    now.append(1.0)
-                else:
-                    now.append(0.0)
-                continue
-        feature.append(now)
-
-    feature = normalize_features(feature)
+    for i in range(0, len(input)):
+        # Fare feature
+        if check(input[i][8]):
+            feature[i][0] = float(input[i][8])
+        else:
+            feature[i][0] = float(default_value[8])/float(default_count[8])
+        # Feature for gender
+        if input[i][3] == 'male':
+            feature[i][1] = 1.0
+        else:
+            feature[i][1] = 0.0
+        # Age feature
+        if check(input[i][4]):
+            feature[i][2] = float(input[i][4])
+        else:
+            feature[i][2] = float(default_value[4])/float(default_count[4])
+        # Siblings count + Children/Parents feature
+        siblings_value = 0
+        if check(input[i][5]):
+            siblings_value = float(input[i][5])
+        else:
+            siblings_value = float(default_value[5])/float(default_count[5])
+        if check(input[i][6]):
+            feature[i][3] = siblings_value + float(input[i][6])
+        else:
+            feature[i][3] = siblings_value + float(default_value[6])/float(default_count[6])
+        # Embarked feature
+        if input[i][10] == 'S':
+            feature[i][4] = 0.0
+        elif input[i][10] == 'C':
+            feature[i][4] = 1.0
+        else:
+            feature[i][4] = 2.0
+        # Name feature
+        surname, abbrev = extract_name_feature(input[i][2])
+        # Abbrev feature
+        if abbrev_map.has_key(abbrev):
+            feature[i][5] = abbrev_map[abbrev]
+        else:
+            abbrev_map[abbrev] = abbrev_count
+            feature[i][5] = abbrev_count
+            abbrev_count += 1.0
+        # Surname + cousin count value feature
+        value = surname + str(feature[i][3])
+        if surname_map.has_key(value):
+            feature[i][6] = surname_map[value]
+        else:
+            surname_map[value] = surname_count
+            feature[i][6] = surname_count
+            surname_count += 1.0
     return feature
 
-
-def get_test_features_vectors(csv_file):
+def get_features_vectors(csv_file, test_data=False):
     csv_file_object = csv.reader(open(csv_file, 'rb'))
-    header = csv_file_object.next()
     data=[]
-
     for row in csv_file_object:
         data.append(row)
+    label = []
+    if not test_data:
+        i = 1
+        while i < len(data):
+            label.append(data[i][1])
+            del data[i][1]
+            i += 1
+    feature = prepare_data(data)
+    if test_data:
+        return feature
+    return feature, label
 
-    feature = prepare_test_data(data)
-    return feature
 
 
+# Main function starts here
 feature, label = get_features_vectors('train.csv')
-test_feature = get_test_features_vectors('test.csv')
+test_feature = get_features_vectors('test.csv', True)
+
+total_features = feature + test_feature
+total_features = normalize_features(total_features)
+
+# feature_correlation(total_features)
+
+feature = total_features[:891]
+test_feature = total_features[-418:]
 
 # forest = RandomForestClassifier(n_estimators = 100)
-forest = svm.SVC()
+forest = GradientBoostingClassifier()
 forest.fit(feature, label)
 output = forest.predict(test_feature)
 
@@ -175,15 +185,3 @@ with open('output.csv', 'w') as csvfile:
     for row in final_result:
         writer.writerow({'PassengerId': row[0], 'Survived': row[1]})
 
-# data = np.array(data)
-#
-# print data[0::,1::]
-# print data[0::,0]
-#
-# forest = RandomForestClassifier(n_estimators = 100)
-#
-# # Fit the training data to the Survived labels and create the decision trees
-# forest = forest.fit(data[0::,1::],data[0::,0])
-#
-# # Take the same decision trees and run it on the test data
-# output = forest.predict(test_data)
