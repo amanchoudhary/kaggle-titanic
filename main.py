@@ -159,7 +159,7 @@ total_features = normalize_features(total_features)
 feature = total_features[:891]
 test_feature = total_features[-418:]
 
-# forest = RandomForestClassifier(n_estimators = 100)
+# GradientBoostingClassifier
 forest = GradientBoostingClassifier()
 forest.fit(feature, label)
 output = forest.predict(test_feature)
